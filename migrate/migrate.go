@@ -8,15 +8,31 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
+	"sort"
 	"strings"
 	"text/template"
 
 	"github.com/jackc/pgconn"
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v4"
 	"github.com/pkg/errors"
 )
+
+type MigraionDirection int
+
+const (
+	Back MigraionDirection = iota
+	Forward
+	NotFound
+)
+
+type DBConnection interface {
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+}
+
+var ErrNoMigrations = errors.Errorf("no rows in result set")
 
 var migrationPattern = regexp.MustCompile(`\A(\d+)_.+\.sql\z`)
 
@@ -34,6 +50,14 @@ type IrreversibleMigrationError struct {
 
 func (e IrreversibleMigrationError) Error() string {
 	return fmt.Sprintf("Irreversible migration: %d - %s", e.m.Sequence, e.m.Name)
+}
+
+type MigrationNotFound struct {
+	MigrationName string
+}
+
+func (e MigrationNotFound) Error() string {
+	return fmt.Sprintf(`Migration "%s" not found`, e.MigrationName)
 }
 
 type NoMigrationsFoundError struct {
@@ -64,24 +88,24 @@ type MigratorOptions struct {
 }
 
 type Migrator struct {
-	conn         *pgx.Conn
+	conn         DBConnection
 	versionTable string
 	options      *MigratorOptions
-	Migrations   []*Migration
+	Migrations   map[string]*Migration
 	OnStart      func(int32, string, string, string) // OnStart is called when a migration is run with the sequence, name, direction, and SQL
 	Data         map[string]interface{}              // Data available to use in migrations
 }
 
 // NewMigrator initializes a new Migrator. It is highly recommended that versionTable be schema qualified.
-func NewMigrator(ctx context.Context, conn *pgx.Conn, versionTable string) (m *Migrator, err error) {
+func NewMigrator(ctx context.Context, conn DBConnection, versionTable string) (m *Migrator, err error) {
 	return NewMigratorEx(ctx, conn, versionTable, &MigratorOptions{MigratorFS: defaultMigratorFS{}})
 }
 
 // NewMigratorEx initializes a new Migrator. It is highly recommended that versionTable be schema qualified.
-func NewMigratorEx(ctx context.Context, conn *pgx.Conn, versionTable string, opts *MigratorOptions) (m *Migrator, err error) {
+func NewMigratorEx(ctx context.Context, conn DBConnection, versionTable string, opts *MigratorOptions) (m *Migrator, err error) {
 	m = &Migrator{conn: conn, versionTable: versionTable, options: opts}
 	err = m.ensureSchemaVersionTableExists(ctx)
-	m.Migrations = make([]*Migration, 0)
+	m.Migrations = make(map[string]*Migration)
 	m.Data = make(map[string]interface{})
 	return
 }
@@ -89,7 +113,7 @@ func NewMigratorEx(ctx context.Context, conn *pgx.Conn, versionTable string, opt
 type MigratorFS interface {
 	ReadDir(dirname string) ([]os.FileInfo, error)
 	ReadFile(filename string) ([]byte, error)
-	Glob(pattern string) (matches []string, err error)
+	Glob(Pattern string) (matches []string, err error)
 }
 
 type defaultMigratorFS struct{}
@@ -102,8 +126,8 @@ func (defaultMigratorFS) ReadFile(filename string) ([]byte, error) {
 	return ioutil.ReadFile(filename)
 }
 
-func (defaultMigratorFS) Glob(pattern string) ([]string, error) {
-	return filepath.Glob(pattern)
+func (defaultMigratorFS) Glob(Pattern string) ([]string, error) {
+	return filepath.Glob(Pattern)
 }
 
 func FindMigrationsEx(path string, fs MigratorFS) ([]string, error) {
@@ -125,19 +149,19 @@ func FindMigrationsEx(path string, fs MigratorFS) ([]string, error) {
 			continue
 		}
 
-		n, err := strconv.ParseInt(matches[1], 10, 32)
-		if err != nil {
-			// The regexp already validated that the prefix is all digits so this *should* never fail
-			return nil, err
-		}
+		// n, err := strconv.ParseInt(matches[1], 10, 32)
+		// if err != nil {
+		// 	// The regexp already validated that the prefix is all digits so this *should* never fail
+		// 	return nil, err
+		// }
 
-		if n < int64(len(paths)+1) {
-			return nil, fmt.Errorf("Duplicate migration %d", n)
-		}
+		// if n < int64(len(paths)+1) {
+		// 	return nil, fmt.Errorf("Duplicate migration %d", n)
+		// }
 
-		if int64(len(paths)+1) < n {
-			return nil, fmt.Errorf("Missing migration %d", len(paths)+1)
-		}
+		// if int64(len(paths)+1) < n {
+		// 	return nil, fmt.Errorf("Missing migration %d", len(paths)+1)
+		// }
 
 		paths = append(paths, filepath.Join(path, fi.Name()))
 	}
@@ -151,7 +175,6 @@ func FindMigrations(path string) ([]string, error) {
 
 func (m *Migrator) LoadMigrations(path string) error {
 	path = strings.TrimRight(path, string(filepath.Separator))
-
 	mainTmpl := template.New("main")
 	sharedPaths, err := m.options.MigratorFS.Glob(filepath.Join(path, "*", "*.sql"))
 	if err != nil {
@@ -238,21 +261,27 @@ func (m *Migrator) evalMigration(tmpl *template.Template, sql string) (string, e
 }
 
 func (m *Migrator) AppendMigration(name, upSQL, downSQL string) {
-	m.Migrations = append(
-		m.Migrations,
-		&Migration{
-			Sequence: int32(len(m.Migrations)) + 1,
-			Name:     name,
-			UpSQL:    upSQL,
-			DownSQL:  downSQL,
-		})
+	m.Migrations[name] = &Migration{
+		Sequence: int32(len(m.Migrations)) + 1,
+		Name:     name,
+		UpSQL:    upSQL,
+		DownSQL:  downSQL,
+	}
 	return
 }
 
 // Migrate runs pending migrations
 // It calls m.OnStart when it begins a migration
 func (m *Migrator) Migrate(ctx context.Context) error {
-	return m.MigrateTo(ctx, int32(len(m.Migrations)))
+	// return m.MigrateTo(ctx, int32(len(m.Migrations)))
+	migrations, err := m.MigrationsToApply(ctx)
+	if err != nil {
+		return err
+	}
+	if len(migrations) == 0 {
+		return nil
+	}
+	return m.MigrateTo(ctx, migrations[len(migrations)-1])
 }
 
 // Lock to ensure multiple migrations cannot occur simultaneously
@@ -268,8 +297,68 @@ func (m *Migrator) releaseAdvisoryLock(ctx context.Context) error {
 	return err
 }
 
+//ApplyMigration applies migration
+// func (m *Migrator) ApplyMigration(ctx context.Context, migration string) (err error) {
+
+// }
+
+func (m *Migrator) MigrationsToApply(ctx context.Context) ([]string, error) {
+	currentMigrations, err := m.GetCurrentVersion(ctx)
+	// fmt.Println(err)
+	if err != nil && err != ErrNoMigrations {
+		return []string{}, err
+	}
+	// fmt.Println(m.Migrations)
+	var found bool
+	toApply := []string{}
+	for _, migrationCandidate := range m.Migrations {
+		found = false
+		for _, migrationApplied := range currentMigrations {
+			if migrationCandidate.Name == migrationApplied {
+				found = true
+				break
+			}
+		}
+		if !found {
+			toApply = append(toApply, migrationCandidate.Name)
+		}
+	}
+	sort.Strings(toApply)
+	return toApply, nil
+}
+
+func Position(a []string, x string) int {
+	for i, s := range a {
+		if x == s {
+			return i
+		}
+	}
+	return -1
+}
+
+func Reverse(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
+func (m *Migrator) GetDirection(ctx context.Context, targetMigration string) (MigraionDirection, error) {
+	currentMigrations, err := m.GetCurrentVersion(ctx)
+
+	if err != nil && err != ErrNoMigrations {
+		return Back, err
+	}
+	_, foundNew := m.Migrations[targetMigration]
+	if Position(currentMigrations, targetMigration) >= 0 {
+		return Back, nil
+	} else if foundNew {
+		return Forward, nil
+	}
+	return NotFound, nil
+}
+
 // MigrateTo migrates to targetVersion
-func (m *Migrator) MigrateTo(ctx context.Context, targetVersion int32) (err error) {
+func (m *Migrator) MigrateTo(ctx context.Context, targetMigration string) (err error) {
 	err = m.acquireAdvisoryLock(ctx)
 	if err != nil {
 		return err
@@ -281,46 +370,62 @@ func (m *Migrator) MigrateTo(ctx context.Context, targetVersion int32) (err erro
 		}
 	}()
 
-	currentVersion, err := m.GetCurrentVersion(ctx)
+	// currentMigrations, err := m.GetCurrentVersion(ctx)
+	// if err != nil && err != ErrNoMigrations {
+	// 	return err
+	// }
+	// fmt.Println(currentMigrations)
+
+	// var direction int32
+	// if currentMigrations < targetMigration {
+	// 	direction = 1
+	// } else {
+	// 	direction = -1
+	// }
+	direction, err := m.GetDirection(ctx, targetMigration)
 	if err != nil {
 		return err
 	}
-
-	if targetVersion < 0 || int32(len(m.Migrations)) < targetVersion {
-		errMsg := fmt.Sprintf("destination version %d is outside the valid versions of 0 to %d", targetVersion, len(m.Migrations))
-		return BadVersionError(errMsg)
+	// fmt.Println(direction)
+	var migrationsToApply []string
+	if direction == Forward {
+		migrationsToApply, err = m.MigrationsToApply(ctx)
+		if err != nil {
+			return err
+		}
+	} else if direction == Back {
+		currentMigrations, err := m.GetCurrentVersion(ctx)
+		if err != nil {
+			return err
+		}
+		Reverse(currentMigrations)
+		migrationsToApply = currentMigrations[:Position(currentMigrations, targetMigration)]
+	} else if direction == NotFound {
+		return MigrationNotFound{MigrationName: targetMigration}
 	}
 
-	if currentVersion < 0 || int32(len(m.Migrations)) < currentVersion {
-		errMsg := fmt.Sprintf("current version %d is outside the valid versions of 0 to %d", currentVersion, len(m.Migrations))
-		return BadVersionError(errMsg)
-	}
-
-	var direction int32
-	if currentVersion < targetVersion {
-		direction = 1
-	} else {
-		direction = -1
-	}
-
-	for currentVersion != targetVersion {
+	for _, currentName := range migrationsToApply {
 		var current *Migration
 		var sql, directionName string
-		var sequence int32
-		if direction == 1 {
-			current = m.Migrations[currentVersion]
-			sequence = current.Sequence
+		// var sequence int32
+		// if direction == 1 {
+		current = m.Migrations[currentName]
+		// sequence = current.Sequence
+		if direction == Forward {
 			sql = current.UpSQL
-			directionName = "up"
 		} else {
-			current = m.Migrations[currentVersion-1]
-			sequence = current.Sequence - 1
 			sql = current.DownSQL
-			directionName = "down"
-			if current.DownSQL == "" {
-				return IrreversibleMigrationError{m: current}
-			}
 		}
+		// directionName = "up"
+		// } else {
+		// 	current = m.Migrations[currentMigrations-1]
+		// 	sequence = current.Sequence - 1
+		// 	sql = current.DownSQL
+		// 	directionName = "down"
+		// 	if current.DownSQL == "" {
+		// 		return IrreversibleMigrationError{m: current}
+		// 	}
+		// }
 
 		var tx pgx.Tx
 		if !m.options.DisableTx {
@@ -335,25 +440,31 @@ func (m *Migrator) MigrateTo(ctx context.Context, targetVersion int32) (err erro
 		if m.OnStart != nil {
 			m.OnStart(current.Sequence, current.Name, directionName, sql)
 		}
-
-		// Execute the migration
-		_, err = m.conn.Exec(ctx, sql)
-		if err != nil {
-			if err, ok := err.(*pgconn.PgError); ok {
-				return MigrationPgError{Sql: sql, PgError: err}
+		if sql != "" {
+			// Execute the migration
+			_, err = m.conn.Exec(ctx, sql)
+			if err != nil {
+				// fmt.Println(current.Name)
+				if err, ok := err.(*pgconn.PgError); ok {
+					return MigrationPgError{Sql: sql, PgError: err}
+				}
+				return err
 			}
-			return err
 		}
 
 		// Reset all database connection settings. Important to do before updating version as search_path may have been changed.
 		m.conn.Exec(ctx, "reset all")
 
 		// Add one to the version
-		_, err = m.conn.Exec(ctx, "update "+m.versionTable+" set version=$1", sequence)
+		// err = m.markMigrationApplied(ctx, current.Name)
+		if direction == Forward {
+			err = m.markMigrationApplied(ctx, current.Name)
+		} else {
+			err = m.markMigrationUnapplied(ctx, current.Name)
+		}
 		if err != nil {
 			return err
 		}
-
 		if !m.options.DisableTx {
 			err = tx.Commit(ctx)
 			if err != nil {
@@ -361,15 +472,56 @@ func (m *Migrator) MigrateTo(ctx context.Context, targetVersion int32) (err erro
 			}
 		}
 
-		currentVersion = currentVersion + direction
+		if targetMigration == currentName {
+			//we have done with migrations, exiting
+			return nil
+		}
+
+		// currentMigrations = currentMigrations + direction
 	}
 
 	return nil
 }
 
-func (m *Migrator) GetCurrentVersion(ctx context.Context) (v int32, err error) {
-	err = m.conn.QueryRow(ctx, "select version from "+m.versionTable).Scan(&v)
-	return v, err
+func (m *Migrator) markMigrationApplied(ctx context.Context, migrationsName string) error {
+	query := fmt.Sprintf("insert into %s (migration_name,migrated_at) values ($1,now())", m.versionTable)
+	_, err := m.conn.Exec(ctx,
+		query,
+		migrationsName,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (m *Migrator) markMigrationUnapplied(ctx context.Context, migrationsName string) error {
+	query := fmt.Sprintf("delete from %s where migration_name=$1", m.versionTable)
+	_, err := m.conn.Exec(ctx,
+		query,
+		migrationsName,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *Migrator) GetCurrentVersion(ctx context.Context) (v []string, err error) {
+	migrations := make([]string, 0)
+	rows, err := m.conn.Query(ctx,
+		fmt.Sprintf("select migration_name from %s order by migrated_at",
+			m.versionTable),
+	)
+	defer rows.Close()
+	if err == ErrNoMigrations {
+		return migrations, nil
+	}
+	for rows.Next() {
+		var v string
+		rows.Scan(&v)
+		migrations = append(migrations, v)
+	}
+	return migrations, err
 }
 
 func (m *Migrator) ensureSchemaVersionTableExists(ctx context.Context) (err error) {
@@ -383,21 +535,41 @@ func (m *Migrator) ensureSchemaVersionTableExists(ctx context.Context) (err erro
 			err = unlockErr
 		}
 	}()
-
-	_, err = m.GetCurrentVersion(ctx)
-	if err == nil {
+	exists := m.isMigrationTableExists(ctx)
+	if exists == true {
 		return nil
 	}
-	if pgErr, ok := err.(*pgconn.PgError); !ok || pgErr.Code != pgerrcode.UndefinedTable {
-		return err
+
+	// if pgErr, ok := err.(*pgconn.PgError); !ok || pgErr.Code != pgerrcode.UndefinedTable {
+	// 	return err
+	// }
+
+	err = m.createMigrationTable(ctx)
+
+	return err
+
+}
+
+func (m *Migrator) isMigrationTableExists(ctx context.Context) bool {
+	var v bool
+	var err error
+	query := fmt.Sprintf(`SELECT EXISTS (
+		SELECT FROM information_schema.tables 
+		WHERE table_name = $1
+		)`)
+	err = m.conn.QueryRow(ctx, query, m.versionTable).Scan(&v)
+	if err != nil {
+		v = false
 	}
+	return v
+}
 
+func (m *Migrator) createMigrationTable(ctx context.Context) (err error) {
 	_, err = m.conn.Exec(ctx, fmt.Sprintf(`
-    create table if not exists %s(version int4 not null);
-
-    insert into %s(version)
-    select 0
-    where 0=(select count(*) from %s);
-  `, m.versionTable, m.versionTable, m.versionTable))
+	create table if not exists %s(
+		id serial primary key,
+		migration_name character varying(255) not null, 
+		migrated_at timestamp with time zone)
+	 `, m.versionTable))
 	return err
 }

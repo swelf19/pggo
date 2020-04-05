@@ -4,4 +4,4 @@ create table t2(
 
 ---- create above / drop below ----
 
-drop table t2;
+drop table IF EXISTS t2;

@@ -11,17 +11,17 @@ Tern is a standalone migration tool for PostgreSQL.
 
 ## Installation
 
-    go get -u github.com/jackc/tern
+    go get -u github.com/jackc/pggo
 
 ## Creating a Tern Project
 
-To create a new tern project in the current directory run:
+To create a new pggo project in the current directory run:
 
-    tern init
+    pggo init
 
 Or to create the project somewhere else:
 
-    tern init path/to/project
+    pggo init path/to/project
 
 Tern projects are composed of a directory of migrations and optionally a
 config file. See the sample directory for an example.
@@ -30,10 +30,10 @@ config file. See the sample directory for an example.
 
 Database connection settings can be specified via the standard PostgreSQL
 environment variables, via program arguments, or in a config file. By
-default tern will look in the current directory for the config file tern.conf
+default pggo will look in the current directory for the config file pggo.conf
 and the migrations.
 
-The `tern.conf` file is stored in the `ini` format with two sections,
+The `pggo.conf` file is stored in the `ini` format with two sections,
 `database` and `data`. The `database` section contains settings for connection
 to the database server.
 
@@ -46,10 +46,10 @@ If all database settings are supplied by PG* environment variables or program
 arguments the config file is not required. In particular, using the `PGSERVICE`
 can reduce or eliminate the need for a configuration file.
 
-The entire `tern.conf` file is processed through the Go standard
+The entire `pggo.conf` file is processed through the Go standard
 `text/template` package. The program environment is available at `.env`.
 
-Example `tern.conf`:
+Example `pggo.conf`:
 
 ```ini
 [database]
@@ -57,7 +57,7 @@ Example `tern.conf`:
 # host = /private/tmp
 host = 127.0.0.1
 # port = 5432
-database = tern_test
+database = pggo_test
 user = jack
 password = {{.env.MIGRATOR_PASSWORD}}
 # version_table = public.schema_version
@@ -98,7 +98,7 @@ as test, development, and production in several ways.
 
 To create a new migration:
 
-    tern new name_of_migration
+    pggo new name_of_migration
 
 This will create a migration file with the given name prefixed by the next available sequence number (e.g. 001, 002, 003).
 
@@ -158,33 +158,33 @@ package docs for details.
 ## Migrating
 
 To migrate up to the last version using migrations and config file located in
-the same directory simply run tern:
+the same directory simply run pggo:
 
-    tern migrate
+    pggo migrate
 
 To migrate up or down to a specific version:
 
-    tern migrate --destination 42
+    pggo migrate --destination 42
 
 To migrate up N versions:
 
-    tern migrate --destination +3
+    pggo migrate --destination +3
 
 To migrate down N versions:
 
-    tern migrate --destination -3
+    pggo migrate --destination -3
 
 To migrate down and rerun the previous N versions:
 
-    tern migrate --destination -+3
+    pggo migrate --destination -+3
 
 To use a different config file:
 
-    tern migrate --config path/to/tern.json
+    pggo migrate --config path/to/pggo.json
 
 To use a different migrations directory:
 
-    tern migrate --migrations path/to/migrations
+    pggo migrate --migrations path/to/migrations
 
 ## SSH Tunnel
 
@@ -200,27 +200,27 @@ Tern will automatically use an SSH agent if available.
 
 ## Embedding Tern
 
-All the actual functionality of tern is in the github.com/jackc/tern/migrate
+All the actual functionality of pggo is in the github.com/jackc/pggo/migrate
 library. If you need to embed migrations into your own application this
 library can help.
 
 ## Running the Tests
 
-To run the tests tern requires two test databases to run migrations against.
+To run the tests pggo requires two test databases to run migrations against.
 
-1. Create a new database for main tern program tests.
-2. Open testdata/tern.conf.example
+1. Create a new database for main pggo program tests.
+2. Open testdata/pggo.conf.example
 3. Enter the connection information.
-4. Save as testdata/tern.conf.
+4. Save as testdata/pggo.conf.
 5. Create another database for the migrate library tests.
 6. Run tests with the connection string for the migrate library tests in the MIGRATE_TEST_CONN_STRING environment variable
 
-    MIGRATE_TEST_CONN_STRING="host=/private/tmp database=tern_migrate_test" go test ./...
+    MIGRATE_TEST_CONN_STRING="host=/private/tmp database=pggo_migrate_test" go test ./...
 
 ## Prior Ruby Gem Version
 
-The projects using the prior version of tern that was distributed as a Ruby
-Gem are incompatible with the version 1 release. However, that version of tern
+The projects using the prior version of pggo that was distributed as a Ruby
+Gem are incompatible with the version 1 release. However, that version of pggo
 is still available through RubyGems and the source code is on the ruby branch.
 
 ## Version History
@@ -246,7 +246,7 @@ is still available through RubyGems and the source code is on the ruby branch.
 ## 1.8.2 (July 19, 2019)
 
 * Show PostgreSQL error details
-* Rename internal error type
+* Rename inpggoal error type
 
 ## 1.8.1 (April 5, 2019)
 
@@ -257,8 +257,8 @@ is still available through RubyGems and the source code is on the ruby branch.
 
 * Update to latest version of pgx (PostgreSQL driver)
 * Support PGSSLROOTCERT
-* Fix typos and internal cleanup
-* Refactor internals for easier embedding (hsyed)
+* Fix typos and inpggoal cleanup
+* Refactor inpggoals for easier embedding (hsyed)
 
 ## 1.7.1 (January 30, 2016)
 

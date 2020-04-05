@@ -15,8 +15,8 @@ import (
 	"text/template"
 	"time"
 
+	"git.u4b.ru/swelf/pggo/migrate"
 	"github.com/jackc/pgx/v4"
-	"github.com/jackc/tern/migrate"
 	"github.com/spf13/cobra"
 	ini "github.com/vaughan0/go-ini"
 )
@@ -128,6 +128,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+//migrate.DBConnection
 func (c *Config) Connect(ctx context.Context) (*pgx.Conn, error) {
 	if c.SSHConnConfig.Host != "" {
 		client, err := NewSSHClient(&c.SSHConnConfig)
@@ -169,43 +170,29 @@ func (c *Config) Connect(ctx context.Context) (*pgx.Conn, error) {
 func main() {
 	cmdInit := &cobra.Command{
 		Use:   "init DIRECTORY",
-		Short: "Initialize a new tern project",
-		Long:  "Initialize a new tern project in DIRECTORY",
+		Short: "Initialize a new pggo project",
+		Long:  "Initialize a new pggo project in DIRECTORY",
 		Run:   Init,
 	}
 
 	cmdMigrate := &cobra.Command{
-		Use:   "migrate",
-		Short: "Migrate the database",
-		Long: `Migrate the database to destination migration version.
+		Use:   "migrate [migrationName]",
+		Short: "Migrate the database up/down to migration name",
+		Long: `Migrate the database to destination migration name.
 
-Destination migration version can be one of the following value types:
+Destination migration name is optional name of migration reflects schema version:
 
-An integer:
+string - represent name of migration:
   Migrate to a specific migration.
-  e.g. tern migrate -d 42
+  e.g. pggo migrate 001_create1
 
-"+" and an integer:
-  Migrate forward N steps.
-  e.g. tern migrate -d +3
-
-"-" and an integer:
-  Migrate backward N steps.
-  e.g. tern migrate -d -2
-
-"-+" and an integer:
-  Redo previous N steps (migrate backward N steps then forward N steps).
-  e.g. tern migrate -d -+1
-
-The word "last":
-  Migrate to the most recent migration. This is the default value, so it is
-  never needed to specify directly.
-  e.g. tern migrate
-  e.g. tern migrate -d last
-		`,
+nothing:
+Migrate to the most recent migration.
+  e.g. pggo migrate 
+`,
 		Run: Migrate,
 	}
-	cmdMigrate.Flags().StringVarP(&cliOptions.destinationVersion, "destination", "d", "last", "destination migration version")
+	// cmdMigrate.Flags().StringVarP(&cliOptions.destinationVersion, "destination", "d", "last", "destination migration version")
 	addConfigFlagsToCommand(cmdMigrate)
 
 	cmdStatus := &cobra.Command{
@@ -227,11 +214,11 @@ The word "last":
 		Use:   "version",
 		Short: "Print version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("tern v%s\n", VERSION)
+			fmt.Printf("pggo v%s\n", VERSION)
 		},
 	}
 
-	rootCmd := &cobra.Command{Use: "tern", Short: "tern - PostgreSQL database migrator"}
+	rootCmd := &cobra.Command{Use: "pggo", Short: "pggo - PostgreSQL database migrator"}
 	rootCmd.AddCommand(cmdInit)
 	rootCmd.AddCommand(cmdMigrate)
 	rootCmd.AddCommand(cmdStatus)
@@ -242,7 +229,7 @@ The word "last":
 
 func addConfigFlagsToCommand(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&cliOptions.migrationsPath, "migrations", "m", ".", "migrations path")
-	cmd.Flags().StringVarP(&cliOptions.configPath, "config", "c", "", "config path (default is ./tern.conf)")
+	cmd.Flags().StringVarP(&cliOptions.configPath, "config", "c", "", "config path (default is ./pggo.conf)")
 
 	cmd.Flags().StringVarP(&cliOptions.host, "host", "", "", "database host")
 	cmd.Flags().Uint16VarP(&cliOptions.port, "port", "", 0, "database port")
@@ -277,7 +264,7 @@ func Init(cmd *cobra.Command, args []string) {
 	}
 
 	// Write default conf file
-	confPath := filepath.Join(directory, "tern.conf")
+	confPath := filepath.Join(directory, "pggo.conf")
 	confFile, err := os.OpenFile(confPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -384,37 +371,43 @@ func Migrate(cmd *cobra.Command, args []string) {
 		fmt.Printf("%s executing %s %s\n%s\n\n", time.Now().Format("2006-01-02 15:04:05"), name, direction, sql)
 	}
 
-	var currentVersion int32
-	currentVersion, err = migrator.GetCurrentVersion(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get current version:\n  %v\n", err)
-		os.Exit(1)
+	// var currentVersion []string
+	// currentVersion, err = migrator.GetCurrentVersion(ctx)
+	// // fmt.Println(currentVersion)
+	// if err != nil {
+	// 	fmt.Fprintf(os.Stderr, "Unable to get current version:\n  %v\n", err)
+	// 	os.Exit(1)
+	// }
+	destination := ""
+	if len(args) == 1 {
+		destination = args[0]
 	}
-
-	destination := cliOptions.destinationVersion
-	mustParseDestination := func(d string) int32 {
-		var n int64
-		n, err = strconv.ParseInt(d, 10, 32)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Bad destination:\n  %v\n", err)
-			os.Exit(1)
-		}
-		return int32(n)
-	}
-	if destination == "last" {
+	// mustParseDestination := func(d string) int32 {
+	// 	var n int64
+	// 	n, err = strconv.ParseInt(d, 10, 32)
+	// 	if err != nil {
+	// 		fmt.Fprintf(os.Stderr, "Bad destination:\n  %v\n", err)
+	// 		os.Exit(1)
+	// 	}
+	// 	return int32(n)
+	// }
+	if destination == "" {
 		err = migrator.Migrate(ctx)
-	} else if len(destination) >= 3 && destination[0:2] == "-+" {
-		err = migrator.MigrateTo(ctx, currentVersion-mustParseDestination(destination[2:]))
-		if err == nil {
-			err = migrator.MigrateTo(ctx, currentVersion)
-		}
-	} else if len(destination) >= 2 && destination[0] == '-' {
-		err = migrator.MigrateTo(ctx, currentVersion-mustParseDestination(destination[1:]))
-	} else if len(destination) >= 2 && destination[0] == '+' {
-		err = migrator.MigrateTo(ctx, currentVersion+mustParseDestination(destination[1:]))
 	} else {
-		err = migrator.MigrateTo(ctx, mustParseDestination(destination))
+		err = migrator.MigrateTo(ctx, destination)
 	}
+	// } else if len(destination) >= 3 && destination[0:2] == "-+" {
+	// 	err = migrator.MigrateTo(ctx, currentVersion-mustParseDestination(destination[2:]))
+	// 	if err == nil {
+	// 		err = migrator.MigrateTo(ctx, currentVersion)
+	// 	}
+	// } else if len(destination) >= 2 && destination[0] == '-' {
+	// 	err = migrator.MigrateTo(ctx, currentVersion-mustParseDestination(destination[1:]))
+	// } else if len(destination) >= 2 && destination[0] == '+' {
+	// 	err = migrator.MigrateTo(ctx, currentVersion+mustParseDestination(destination[1:]))
+	// } else {
+	// 	err = migrator.MigrateTo(ctx, mustParseDestination(destination))
+	// }
 
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -488,15 +481,32 @@ func Status(cmd *cobra.Command, args []string) {
 	}
 
 	var status string
-	behindCount := len(migrator.Migrations) - int(migrationVersion)
+	behindCount := len(migrator.Migrations) - len(migrationVersion)
 	if behindCount == 0 {
 		status = "up to date"
 	} else {
-		status = "migration(s) pending"
+		status = fmt.Sprintf(
+			"migration(s) pending - %d",
+			len(migrator.Migrations)-len(migrationVersion),
+		)
 	}
 
 	fmt.Println("status:  ", status)
-	fmt.Printf("version:  %d of %d\n", migrationVersion, len(migrator.Migrations))
+	if behindCount > 0 {
+		fmt.Println("pending migrations:    ")
+		migrations, err := migrator.MigrationsToApply(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error retrieving migration version:\n  %v\n", err)
+			os.Exit(1)
+		}
+		for i, m := range migrations {
+			fmt.Println("         ", m)
+			if i > 2 {
+				break
+			}
+		}
+	}
+	// fmt.Printf("version:  %d of %d\n", migrationVersion, len(migrator.Migrations))
 	fmt.Println("host:    ", config.ConnConfig.Host)
 	fmt.Println("database:", config.ConnConfig.Database)
 }
@@ -511,8 +521,8 @@ func LoadConfig() (*Config, error) {
 
 	// Set default config path only if it exists
 	if cliOptions.configPath == "" {
-		if _, err := os.Stat("./tern.conf"); err == nil {
-			cliOptions.configPath = "./tern.conf"
+		if _, err := os.Stat("./pggo.conf"); err == nil {
+			cliOptions.configPath = "./pggo.conf"
 		}
 	}
 
