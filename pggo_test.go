@@ -268,6 +268,48 @@ func (suite *PggoBinTestSuite) TestMigrate() {
 	}
 }
 
+func migrationApplied(t *testing.T, migrationName string) bool {
+	ctx := context.Background()
+	connConfig, err := readConfig("testdata/pggo.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// connConfig.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+
+	conn, err := pgx.ConnectConfig(ctx, connConfig)
+	if err != nil {
+		connConfig.TLSConfig = nil
+		conn, err = pgx.ConnectConfig(ctx, connConfig)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+
+	var exists bool
+	err = conn.QueryRow(
+		ctx,
+		"select exists(select 1 from schema_version where migration_name=$1)",
+		migrationName,
+	).Scan(&exists)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return exists
+}
+
+func (suite *PggoBinTestSuite) TestMigrateFake() {
+	baseArgs := []string{"migrate", "-m", "testdata", "-c", "testdata/pggo.conf"}
+	args := append(baseArgs, "001_create_t1.sql", "-f")
+	output := pggo(suite.T(), args...)
+	fmt.Println(output)
+	suite.Equal(true, migrationApplied(suite.T(), "001_create_t1.sql"), "migration exists")
+	suite.Equal(false, tableExists(suite.T(), "t1"), "table exists")
+
+}
+
 func (suite *PggoBinTestSuite) TestStatus() {
 	// Ensure database is in clean state
 	t := suite.T()

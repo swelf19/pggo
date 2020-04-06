@@ -94,14 +94,15 @@ var cliOptions struct {
 	migrationsPath     string
 	configPath         string
 
-	host         string
-	port         uint16
-	user         string
-	password     string
-	database     string
-	sslmode      string
-	sslrootcert  string
-	versionTable string
+	host          string
+	port          uint16
+	user          string
+	password      string
+	database      string
+	sslmode       string
+	sslrootcert   string
+	versionTable  string
+	fakeMigration bool
 
 	sshHost     string
 	sshPort     string
@@ -193,6 +194,11 @@ Migrate to the most recent migration.
 		Run: Migrate,
 	}
 	// cmdMigrate.Flags().StringVarP(&cliOptions.destinationVersion, "destination", "d", "last", "destination migration version")
+	cmdMigrate.Flags().BoolVarP(
+		&cliOptions.fakeMigration,
+		"fake", "f", false,
+		"only mark migration as applied no actual migration(default false)",
+	)
 	addConfigFlagsToCommand(cmdMigrate)
 
 	cmdStatus := &cobra.Command{
@@ -371,43 +377,18 @@ func Migrate(cmd *cobra.Command, args []string) {
 		fmt.Printf("%s executing %s %s\n%s\n\n", time.Now().Format("2006-01-02 15:04:05"), name, direction, sql)
 	}
 
-	// var currentVersion []string
-	// currentVersion, err = migrator.GetCurrentVersion(ctx)
-	// // fmt.Println(currentVersion)
-	// if err != nil {
-	// 	fmt.Fprintf(os.Stderr, "Unable to get current version:\n  %v\n", err)
-	// 	os.Exit(1)
-	// }
 	destination := ""
 	if len(args) == 1 {
 		destination = args[0]
 	}
-	// mustParseDestination := func(d string) int32 {
-	// 	var n int64
-	// 	n, err = strconv.ParseInt(d, 10, 32)
-	// 	if err != nil {
-	// 		fmt.Fprintf(os.Stderr, "Bad destination:\n  %v\n", err)
-	// 		os.Exit(1)
-	// 	}
-	// 	return int32(n)
-	// }
+	if cliOptions.fakeMigration {
+		migrator.EnableFake()
+	}
 	if destination == "" {
 		err = migrator.Migrate(ctx)
 	} else {
 		err = migrator.MigrateTo(ctx, destination)
 	}
-	// } else if len(destination) >= 3 && destination[0:2] == "-+" {
-	// 	err = migrator.MigrateTo(ctx, currentVersion-mustParseDestination(destination[2:]))
-	// 	if err == nil {
-	// 		err = migrator.MigrateTo(ctx, currentVersion)
-	// 	}
-	// } else if len(destination) >= 2 && destination[0] == '-' {
-	// 	err = migrator.MigrateTo(ctx, currentVersion-mustParseDestination(destination[1:]))
-	// } else if len(destination) >= 2 && destination[0] == '+' {
-	// 	err = migrator.MigrateTo(ctx, currentVersion+mustParseDestination(destination[1:]))
-	// } else {
-	// 	err = migrator.MigrateTo(ctx, mustParseDestination(destination))
-	// }
 
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
