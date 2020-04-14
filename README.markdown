@@ -1,6 +1,7 @@
-# Tern - The SQL Fan's Migrator
+# Pggo - The SQL Fan's Migrator
 
-Tern is a standalone migration tool for PostgreSQL.
+fork of https://github.com/jackc/Pggo/
+Pggo is a standalone migration tool for PostgreSQL.
 
 ## Features
 
@@ -13,7 +14,7 @@ Tern is a standalone migration tool for PostgreSQL.
 
     go get -u github.com/jackc/pggo
 
-## Creating a Tern Project
+## Creating a Pggo Project
 
 To create a new pggo project in the current directory run:
 
@@ -23,7 +24,7 @@ Or to create the project somewhere else:
 
     pggo init path/to/project
 
-Tern projects are composed of a directory of migrations and optionally a
+Pggo projects are composed of a directory of migrations and optionally a
 config file. See the sample directory for an example.
 
 # Configuration
@@ -150,7 +151,7 @@ when the underlying table(s) change.
 );
 ```
 
-Tern uses the standard Go
+Pggo uses the standard Go
 [text/template](http://golang.org/pkg/text/template/) package so conditionals
 and other advanced templating features are available if needed. See the
 package docs for details.
@@ -188,17 +189,17 @@ To use a different migrations directory:
 
 ## SSH Tunnel
 
-Tern includes SSH tunnel support. Simply supply the SSH host, and optionally
-port, user, and password in the config file or as program arguments and Tern
+Pggo includes SSH tunnel support. Simply supply the SSH host, and optionally
+port, user, and password in the config file or as program arguments and Pggo
 will tunnel the database connection through that server. When using a SSH tunnel
 the database host should be from the context of the SSH server. For example, if
 your PostgreSQL server is `pg.example.com`, but you only have SSH access, then
 your SSH host would be pg.example.com and your database host would be
 `localhost`.
 
-Tern will automatically use an SSH agent if available.
+Pggo will automatically use an SSH agent if available.
 
-## Embedding Tern
+## Embedding Pggo
 
 All the actual functionality of pggo is in the github.com/jackc/pggo/migrate
 library. If you need to embed migrations into your own application this

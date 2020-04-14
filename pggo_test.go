@@ -232,13 +232,12 @@ func (suite *PggoBinTestSuite) TestMigrate() {
 		args              []string
 		expectedExists    []string
 		expectedNotExists []string
-		expectedVersion   int32
 	}{
 		// {[]string{"-d", "0"}, []string{}, []string{"t1", "t2"}, 0},
-		{[]string{}, []string{"t1", "t2"}, []string{}, 2},
-		{[]string{"001_create_t1.sql"}, []string{"t1"}, []string{"t2"}, 1},
-		{[]string{"002_create_t2.sql"}, []string{"t1", "t2"}, []string{}, 0},
-		{[]string{"001_create_t1.sql"}, []string{"t1"}, []string{"t2"}, 1},
+		{[]string{}, []string{"t1", "t2"}, []string{}},
+		{[]string{"001_create_t1.sql"}, []string{"t1"}, []string{"t2"}},
+		{[]string{"002_create_t2.sql"}, []string{"t1", "t2"}, []string{}},
+		{[]string{"001_create_t1.sql"}, []string{"t1"}, []string{"t2"}},
 		// {[]string{"-d", "+1"}, []string{"t1", "t2"}, []string{}, 2},
 		// {[]string{"-d", "-+1"}, []string{"t1", "t2"}, []string{}, 2},
 	}
