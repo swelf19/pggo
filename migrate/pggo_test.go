@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"git.u4b.ru/swelf/pggo/migrate"
+	"git.u4b.ru/swelf/pggo/v2/migrate"
 	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

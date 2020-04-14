@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.u4b.ru/swelf/pggo/migrate"
+	"git.u4b.ru/swelf/pggo/v2/migrate"
 	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/suite"
 	"github.com/vaughan0/go-ini"
@@ -73,6 +73,9 @@ func (suite *PggoBinTestSuite) TearDownTest() {
 	// suite.Require().NoError(err, suite.T())
 	// suite.conn.(pgx.Tx).Commit(context.Background())
 	// suite.conn.(pgx.Tx).Conn().Close(context.Background())
+	var err error
+	err = dropTables("t1", "t2", "t2", "schema_version")
+	suite.Require().NoError(err, suite.T())
 }
 func (suite *PggoBinTestSuite) TestInitWithoutDirectory() {
 	defer func() {

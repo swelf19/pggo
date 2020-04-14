@@ -15,13 +15,13 @@ import (
 	"text/template"
 	"time"
 
-	"git.u4b.ru/swelf/pggo/migrate"
+	"git.u4b.ru/swelf/pggo/v2/migrate"
 	"github.com/jackc/pgx/v4"
 	"github.com/spf13/cobra"
 	ini "github.com/vaughan0/go-ini"
 )
 
-const VERSION = "1.10.1"
+const VERSION = "2.0.2"
 
 var defaultConf = `[database]
 # host is required (network host or path to Unix domain socket)
