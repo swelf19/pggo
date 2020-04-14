@@ -1,4 +1,4 @@
-module git.u4b.ru/swelf/pggo
+module git.u4b.ru/swelf/pggo/v2
 
 go 1.12
 
