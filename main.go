@@ -21,7 +21,7 @@ import (
 	ini "github.com/vaughan0/go-ini"
 )
 
-const VERSION = "2.0.2"
+const VERSION = "2.0.3"
 
 var defaultConf = `[database]
 # host is required (network host or path to Unix domain socket)
@@ -374,7 +374,7 @@ func Migrate(cmd *cobra.Command, args []string) {
 	}
 
 	migrator.OnStart = func(sequence int32, name, direction, sql string) {
-		fmt.Printf("%s executing %s %s\n%s\n\n", time.Now().Format("2006-01-02 15:04:05"), name, direction, sql)
+		fmt.Printf("%s executing %s %s\n\n", time.Now().Format("2006-01-02 15:04:05"), name, direction)
 	}
 
 	destination := ""
