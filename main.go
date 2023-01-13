@@ -15,9 +15,9 @@ import (
 	"text/template"
 	"time"
 
-	"git.u4b.ru/swelf/pggo/v2/migrate"
 	"github.com/jackc/pgx/v4"
 	"github.com/spf13/cobra"
+	"github.com/swelf19/pggo/v2/migrate"
 	ini "github.com/vaughan0/go-ini"
 )
 
@@ -129,7 +129,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-//migrate.DBConnection
+// migrate.DBConnection
 func (c *Config) Connect(ctx context.Context) (*pgx.Conn, error) {
 	if c.SSHConnConfig.Host != "" {
 		client, err := NewSSHClient(&c.SSHConnConfig)

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"git.u4b.ru/swelf/pggo/v2/migrate"
 	"github.com/jackc/pgx/v4"
 	"github.com/stretchr/testify/suite"
+	"github.com/swelf19/pggo/v2/migrate"
 	"github.com/vaughan0/go-ini"
 )
 
