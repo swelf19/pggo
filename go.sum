@@ -1,6 +1,6 @@
 cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
-git.u4b.ru/swelf/pggo/v2 v2.0.1 h1:j6rnrlHC5IbC3U3AhC1Uta1qpVtM1Hz9dHzcREXN4LU=
-git.u4b.ru/swelf/pggo/v2 v2.0.1/go.mod h1:Re+5bJeZoFE3u3eAhbsUZ0O/Jvsil09T6MprMFqThz4=
+github.com/swelf19/pggo/v2 v2.0.1 h1:j6rnrlHC5IbC3U3AhC1Uta1qpVtM1Hz9dHzcREXN4LU=
+github.com/swelf19/pggo/v2 v2.0.1/go.mod h1:Re+5bJeZoFE3u3eAhbsUZ0O/Jvsil09T6MprMFqThz4=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
